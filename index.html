@@ -47,6 +47,7 @@
     box-shadow: 0 0 15px 8px rgba(0, 170, 255, 0.8);
     transform: translateX(-50%);
     filter: drop-shadow(0 0 15px #00aaff);
+    transition: background 0.5s ease, box-shadow 0.5s ease, filter 0.5s ease;
   }
   .flicker-delay {
     animation-delay: 0.4s;
@@ -70,17 +71,17 @@
     0% {
       height: 85px;
       opacity: 1;
-      filter: drop-shadow(0 0 15px #00aaff);
+      filter: drop-shadow(0 0 15px var(--flame-color));
     }
     50% {
       height: 100px;
       opacity: 0.7;
-      filter: drop-shadow(0 0 30px #00ccff);
+      filter: drop-shadow(0 0 30px var(--flame-color));
     }
     100% {
       height: 90px;
       opacity: 1;
-      filter: drop-shadow(0 0 20px #0088ff);
+      filter: drop-shadow(0 0 20px var(--flame-color));
     }
   }
   #game-area {
@@ -136,7 +137,7 @@
 <body>
   <div class="container">
     <h1>Veiled Flame: The Quest for Truth</h1>
-    <div class="flame-container">
+    <div class="flame-container" style="--flame-color: #00aaff">
       <div class="flame"></div>
       <div class="flame flicker-delay"></div>
       <div class="flame flicker-delay-2"></div>
@@ -161,17 +162,90 @@
       "The Forgotten Crypt"
     ];
 
+    // Sanity max is 10, min 0
+    let sanity = 5;
+    let currentLocationIndex = 0;
+
+    const currentLocationEl = document.getElementById("current-location");
+    const eventTextEl = document.getElementById("event-text");
+    const messageEl = document.getElementById("message");
+    const sanityMeterEl = document.getElementById("sanity-meter");
+    const drawCardBtn = document.getElementById("draw-card");
+    const nextLocationBtn = document.getElementById("next-location");
+    const flameContainer = document.querySelector(".flame-container");
+
+    // Helper: interpolate between two colors (hex) by factor t 0-1
+    function lerpColor(a, b, t) {
+      const c1 = parseInt(a.slice(1),16);
+      const c2 = parseInt(b.slice(1),16);
+
+      const r1 = (c1 >> 16) & 0xff;
+      const g1 = (c1 >> 8) & 0xff;
+      const b1 = c1 & 0xff;
+
+      const r2 = (c2 >> 16) & 0xff;
+      const g2 = (c2 >> 8) & 0xff;
+      const b2 = c2 & 0xff;
+
+      const r = Math.round(r1 + (r2 - r1) * t);
+      const g = Math.round(g1 + (g2 - g1) * t);
+      const b = Math.round(b1 + (b2 - b1) * t);
+
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function updateFlameColor() {
+      // sanity: 10 = bright blue #00aaff, 0 = purple #8800cc
+      const blue = "#00aaff";
+      const purple = "#8800cc";
+
+      // Map sanity 0-10 to 1-0 (purple to blue)
+      const t = 1 - (sanity / 10);
+      const color = lerpColor(blue, purple, t);
+
+      // Set CSS var for flame color
+      flameContainer.style.setProperty("--flame-color", color);
+
+      // Also update sanity meter color
+      sanityMeterEl.style.color = color;
+      sanityMeterEl.style.textShadow = `0 0 10px ${color}aa`;
+    }
+
+    function updateSanity(change) {
+      sanity += change;
+      if (sanity > 10) sanity = 10;
+      if (sanity < 0) sanity = 0;
+
+      sanityMeterEl.textContent = `Sanity: ${sanity}`;
+      updateFlameColor();
+
+      if (sanity === 0) {
+        messageEl.textContent = "Your mind fractures into the void. The Veil consumes you.";
+        drawCardBtn.disabled = true;
+        nextLocationBtn.disabled = true;
+        removeChoiceInput();
+      }
+    }
+
+    function removeChoiceInput() {
+      const input = document.getElementById("player-choice");
+      const submit = document.getElementById("submit-choice");
+      if (input) input.remove();
+      if (submit) submit.remove();
+    }
+
+    // Updated event cards with resist causing sanity loss
     const eventCards = [
       {
         text: "The black ichor stains your hands. Do you embrace or resist its power?",
         choices: {
           embrace: {
             response: "Power courses through your veins, but madness claws at your mind.",
-            sanityChange: -1
+            sanityChange: +1
           },
           resist: {
-            response: "Your will stands firm, pushing back the creeping corruption.",
-            sanityChange: +1
+            response: "The Veil fights back, fraying your mind’s edges.",
+            sanityChange: -1
           }
         }
       },
@@ -229,38 +303,6 @@
       }
     ];
 
-    let currentLocationIndex = 0;
-    let sanity = 5;
-
-    const currentLocationEl = document.getElementById("current-location");
-    const eventTextEl = document.getElementById("event-text");
-    const messageEl = document.getElementById("message");
-    const sanityMeterEl = document.getElementById("sanity-meter");
-    const drawCardBtn = document.getElementById("draw-card");
-    const nextLocationBtn = document.getElementById("next-location");
-
-    function updateSanity(change) {
-      sanity += change;
-      if (sanity > 10) sanity = 10;
-      if (sanity < 0) sanity = 0;
-
-      sanityMeterEl.textContent = `Sanity: ${sanity}`;
-
-      if (sanity === 0) {
-        messageEl.textContent = "Your mind fractures into the void. The Veil consumes you.";
-        drawCardBtn.disabled = true;
-        nextLocationBtn.disabled = true;
-        removeChoiceInput();
-      }
-    }
-
-    function removeChoiceInput() {
-      const input = document.getElementById("player-choice");
-      const submit = document.getElementById("submit-choice");
-      if (input) input.remove();
-      if (submit) submit.remove();
-    }
-
     function startEvent() {
       // Pick a random event card
       const eventIndex = Math.floor(Math.random() * eventCards.length);
@@ -314,9 +356,10 @@
       removeChoiceInput();
     });
 
-    // Initialize UI
+    // Init UI
     sanityMeterEl.textContent = `Sanity: ${sanity}`;
     currentLocationEl.textContent = locations[currentLocationIndex];
+    updateFlameColor();
   </script>
 </body>
 </html>
