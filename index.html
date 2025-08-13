@@ -84,22 +84,11 @@
       filter: drop-shadow(0 0 20px var(--flame-color));
     }
   }
-  #game-area {
-    margin-top: 1rem;
-  }
-  #location, #event-card {
-    margin: 0.8rem 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-  }
-  #choice-area {
-    margin: 1rem 0;
-  }
   button {
     background-color: #005bb5;
     border: none;
     padding: 10px 18px;
-    margin: 0 0.5rem;
+    margin: 0.5rem;
     color: #cce7ff;
     font-size: 1rem;
     border-radius: 6px;
@@ -143,223 +132,153 @@
       <div class="flame flicker-delay-2"></div>
     </div>
     <div id="game-area">
-      <div id="location">Location: <span id="current-location">The Cedar Compound</span></div>
-      <div id="event-card">Event: <span id="event-text">Draw an event card to begin...</span></div>
+      <div id="location">Location: <span id="current-location">???</span></div>
+      <div id="event-card">Event: <span id="event-text">Press Begin to start...</span></div>
       <div id="choice-area">
-        <button id="draw-card">Draw Event Card</button>
-        <button id="next-location">Next Location</button>
+        <button id="begin-game">Begin</button>
+        <button id="draw-card" disabled>Draw Event Card</button>
+        <button id="next-location" disabled>Next Location</button>
       </div>
       <div id="message"></div>
     </div>
     <div id="sanity-meter">Sanity: 5</div>
   </div>
 
-  <script>
-    const locations = [
-      "The Cedar Compound",
-      "The Monastery Basement",
-      "The Umbralis Sanctum",
-      "The Forgotten Crypt"
-    ];
+<script>
+const locations = [
+  "The Cedar Compound",
+  "The Monastery Basement",
+  "The Umbralis Sanctum",
+  "The Forgotten Crypt"
+];
+let sanity = 5;
+let currentLocationIndex = 0;
+let awaitingAnswer = false;
 
-    // Sanity max is 10, min 0
-    let sanity = 5;
-    let currentLocationIndex = 0;
+const currentLocationEl = document.getElementById("current-location");
+const eventTextEl = document.getElementById("event-text");
+const messageEl = document.getElementById("message");
+const sanityMeterEl = document.getElementById("sanity-meter");
+const drawCardBtn = document.getElementById("draw-card");
+const nextLocationBtn = document.getElementById("next-location");
+const beginGameBtn = document.getElementById("begin-game");
+const flameContainer = document.querySelector(".flame-container");
 
-    const currentLocationEl = document.getElementById("current-location");
-    const eventTextEl = document.getElementById("event-text");
-    const messageEl = document.getElementById("message");
-    const sanityMeterEl = document.getElementById("sanity-meter");
-    const drawCardBtn = document.getElementById("draw-card");
-    const nextLocationBtn = document.getElementById("next-location");
-    const flameContainer = document.querySelector(".flame-container");
+function lerpColor(a, b, t) {
+  const c1 = parseInt(a.slice(1),16);
+  const c2 = parseInt(b.slice(1),16);
+  const r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+  const r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
+  return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
+}
 
-    // Helper: interpolate between two colors (hex) by factor t 0-1
-    function lerpColor(a, b, t) {
-      const c1 = parseInt(a.slice(1),16);
-      const c2 = parseInt(b.slice(1),16);
+function updateFlameColor() {
+  const blue = "#00aaff", purple = "#8800cc";
+  const t = 1 - (sanity / 10);
+  const color = lerpColor(blue, purple, t);
+  flameContainer.style.setProperty("--flame-color", color);
+  sanityMeterEl.style.color = color;
+  sanityMeterEl.style.textShadow = `0 0 10px ${color}aa`;
+}
 
-      const r1 = (c1 >> 16) & 0xff;
-      const g1 = (c1 >> 8) & 0xff;
-      const b1 = c1 & 0xff;
+function updateSanity(change) {
+  sanity += change;
+  if (sanity > 10) sanity = 10;
+  if (sanity < 0) sanity = 0;
+  sanityMeterEl.textContent = `Sanity: ${sanity}`;
+  updateFlameColor();
+  if (sanity === 0) {
+    messageEl.textContent = "Your mind fractures into the void. The Veil consumes you.";
+    drawCardBtn.disabled = true;
+    nextLocationBtn.disabled = true;
+    removeChoiceInput();
+  }
+}
 
-      const r2 = (c2 >> 16) & 0xff;
-      const g2 = (c2 >> 8) & 0xff;
-      const b2 = c2 & 0xff;
+function removeChoiceInput() {
+  const input = document.getElementById("player-choice");
+  const submit = document.getElementById("submit-choice");
+  if (input) input.remove();
+  if (submit) submit.remove();
+}
 
-      const r = Math.round(r1 + (r2 - r1) * t);
-      const g = Math.round(g1 + (g2 - g1) * t);
-      const b = Math.round(b1 + (b2 - b1) * t);
+const eventCards = [
+  {
+    text: "The black ichor stains your hands. Do you embrace or resist its power?",
+    choices: { embrace: { response: "Power courses...", sanityChange: +1 }, resist: { response: "The Veil fights...", sanityChange: -1 } }
+  },
+  {
+    text: "Whispers from the Necrenomecon call. Do you read aloud or silence the voices?",
+    choices: { read: { response: "Forbidden knowledge floods...", sanityChange: -1 }, silence: { response: "You block out the murmurs...", sanityChange: +1 } }
+  },
+  {
+    text: "A shadowy cultist offers forbidden knowledge. Accept or refuse?",
+    choices: { accept: { response: "Secrets granted sharpen...", sanityChange: -1 }, refuse: { response: "You deny the gift...", sanityChange: +1 } }
+  }
+];
 
-      return `rgb(${r},${g},${b})`;
+function startEvent() {
+  const event = eventCards[Math.floor(Math.random() * eventCards.length)];
+  eventTextEl.textContent = event.text;
+  messageEl.textContent = "";
+  removeChoiceInput();
+
+  const input = document.createElement("input");
+  input.id = "player-choice";
+  input.placeholder = "Type your choice...";
+  const submit = document.createElement("button");
+  submit.id = "submit-choice";
+  submit.textContent = "Submit";
+  messageEl.appendChild(input);
+  messageEl.appendChild(submit);
+  awaitingAnswer = true;
+  nextLocationBtn.disabled = true;
+
+  submit.addEventListener("click", () => {
+    const choice = input.value.trim().toLowerCase();
+    if (choice in event.choices) {
+      const outcome = event.choices[choice];
+      messageEl.textContent = outcome.response;
+      updateSanity(outcome.sanityChange);
+    } else {
+      messageEl.textContent = "The Veil rejects your hesitation...";
+      updateSanity(-1);
     }
+    awaitingAnswer = false;
+    drawCardBtn.disabled = false;
+    nextLocationBtn.disabled = false;
+    removeChoiceInput();
+  });
+}
 
-    function updateFlameColor() {
-      // sanity: 10 = bright blue #00aaff, 0 = purple #8800cc
-      const blue = "#00aaff";
-      const purple = "#8800cc";
+beginGameBtn.addEventListener("click", () => {
+  beginGameBtn.disabled = true;
+  drawCardBtn.disabled = false;
+  currentLocationEl.textContent = locations[currentLocationIndex];
+  eventTextEl.textContent = "Draw an event card to begin...";
+});
 
-      // Map sanity 0-10 to 1-0 (purple to blue)
-      const t = 1 - (sanity / 10);
-      const color = lerpColor(blue, purple, t);
+drawCardBtn.addEventListener("click", () => {
+  drawCardBtn.disabled = true;
+  startEvent();
+});
 
-      // Set CSS var for flame color
-      flameContainer.style.setProperty("--flame-color", color);
+nextLocationBtn.addEventListener("click", () => {
+  if (awaitingAnswer) {
+    updateSanity(-1);
+    awaitingAnswer = false;
+  }
+  currentLocationIndex = (currentLocationIndex + 1) % locations.length;
+  currentLocationEl.textContent = locations[currentLocationIndex];
+  eventTextEl.textContent = "Draw an event card to begin...";
+  messageEl.textContent = "";
+  drawCardBtn.disabled = false;
+  nextLocationBtn.disabled = true;
+  removeChoiceInput();
+});
 
-      // Also update sanity meter color
-      sanityMeterEl.style.color = color;
-      sanityMeterEl.style.textShadow = `0 0 10px ${color}aa`;
-    }
-
-    function updateSanity(change) {
-      sanity += change;
-      if (sanity > 10) sanity = 10;
-      if (sanity < 0) sanity = 0;
-
-      sanityMeterEl.textContent = `Sanity: ${sanity}`;
-      updateFlameColor();
-
-      if (sanity === 0) {
-        messageEl.textContent = "Your mind fractures into the void. The Veil consumes you.";
-        drawCardBtn.disabled = true;
-        nextLocationBtn.disabled = true;
-        removeChoiceInput();
-      }
-    }
-
-    function removeChoiceInput() {
-      const input = document.getElementById("player-choice");
-      const submit = document.getElementById("submit-choice");
-      if (input) input.remove();
-      if (submit) submit.remove();
-    }
-
-    // Updated event cards with resist causing sanity loss
-    const eventCards = [
-      {
-        text: "The black ichor stains your hands. Do you embrace or resist its power?",
-        choices: {
-          embrace: {
-            response: "Power courses through your veins, but madness claws at your mind.",
-            sanityChange: +1
-          },
-          resist: {
-            response: "The Veil fights back, fraying your mind’s edges.",
-            sanityChange: -1
-          }
-        }
-      },
-      {
-        text: "Whispers from the Necrenomecon call. Do you read aloud or silence the voices?",
-        choices: {
-          read: {
-            response: "The forbidden knowledge floods your mind, clarity and chaos entwined.",
-            sanityChange: -1
-          },
-          silence: {
-            response: "You block out the arcane murmurs, preserving your fragile sanity.",
-            sanityChange: +1
-          }
-        }
-      },
-      {
-        text: "A shadowy cultist offers forbidden knowledge. Accept or refuse?",
-        choices: {
-          accept: {
-            response: "The secrets granted sharpen your perception but stain your soul.",
-            sanityChange: -1
-          },
-          refuse: {
-            response: "You deny the cultist’s gift, choosing caution over temptation.",
-            sanityChange: +1
-          }
-        }
-      },
-      {
-        text: "The Splinter fractures anew. Do you attempt to bind it or flee?",
-        choices: {
-          bind: {
-            response: "Your ritual calms the fracturing shard, but it drains your spirit.",
-            sanityChange: -1
-          },
-          flee: {
-            response: "You escape the fracturing’s pull, but the cost lingers in your mind.",
-            sanityChange: 0
-          }
-        }
-      },
-      {
-        text: "The Vessel’s bond pulses. Do you strengthen it with a ritual or sever it to save yourself?",
-        choices: {
-          strengthen: {
-            response: "The bond deepens, granting clarity but binding your fate irrevocably.",
-            sanityChange: 0
-          },
-          sever: {
-            response: "You break the bond, a desperate act that fractures your soul.",
-            sanityChange: -2
-          }
-        }
-      }
-    ];
-
-    function startEvent() {
-      // Pick a random event card
-      const eventIndex = Math.floor(Math.random() * eventCards.length);
-      const event = eventCards[eventIndex];
-
-      eventTextEl.textContent = event.text;
-      messageEl.textContent = "";
-
-      removeChoiceInput();
-
-      // Create input box and submit button
-      const input = document.createElement("input");
-      input.id = "player-choice";
-      input.placeholder = "Type your choice here...";
-      input.autocomplete = "off";
-      input.autofocus = true;
-
-      const submit = document.createElement("button");
-      submit.id = "submit-choice";
-      submit.textContent = "Submit";
-
-      messageEl.appendChild(input);
-      messageEl.appendChild(submit);
-
-      submit.addEventListener("click", () => {
-        const choice = input.value.trim().toLowerCase();
-
-        if (choice in event.choices) {
-          const outcome = event.choices[choice];
-          messageEl.textContent = outcome.response;
-          updateSanity(outcome.sanityChange);
-          drawCardBtn.disabled = false;
-          removeChoiceInput();
-        } else {
-          messageEl.textContent = "The Veil does not understand your hesitation. Choose carefully.";
-        }
-      });
-    }
-
-    drawCardBtn.addEventListener("click", () => {
-      drawCardBtn.disabled = true;
-      startEvent();
-    });
-
-    nextLocationBtn.addEventListener("click", () => {
-      currentLocationIndex = (currentLocationIndex + 1) % locations.length;
-      currentLocationEl.textContent = locations[currentLocationIndex];
-      eventTextEl.textContent = "Draw an event card to begin...";
-      messageEl.textContent = "";
-      drawCardBtn.disabled = false;
-      removeChoiceInput();
-    });
-
-    // Init UI
-    sanityMeterEl.textContent = `Sanity: ${sanity}`;
-    currentLocationEl.textContent = locations[currentLocationIndex];
-    updateFlameColor();
-  </script>
+sanityMeterEl.textContent = `Sanity: ${sanity}`;
+updateFlameColor();
+</script>
 </body>
 </html>
